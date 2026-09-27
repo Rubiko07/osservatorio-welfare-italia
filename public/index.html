@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Piattaforma Dati Welfare — Non autosufficienza in Italia</title>
+<style>
+:root{
+  --bg:#faf9f6; --card:#fff; --ink:#1c1b19; --sub:#5a5650; --line:#e5e1d8;
+  --accent:#8a3324; --accent2:#c96f4a;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+  box-sizing:border-box;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ --bg:#181614; --card:#221f1c; --ink:#f0ece4; --sub:#b8b0a4; --line:#3a352e; }
+}
+:root[data-theme="dark"]{ --bg:#181614; --card:#221f1c; --ink:#f0ece4; --sub:#b8b0a4; --line:#3a352e; }
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Georgia,'Iowan Old Style',serif;line-height:1.5;padding-bottom:3rem}
+.wrap{max-width:960px;margin:0 auto;padding:2rem 1.2rem}
+header{border-bottom:2px solid var(--accent);padding-bottom:1rem;margin-bottom:1.6rem}
+h1{font-size:1.55rem;margin:0 0 .3rem}
+.tag{color:var(--sub);font-size:.92rem;font-family:system-ui,sans-serif}
+.badge{display:inline-block;background:var(--accent);color:#fff;font-family:system-ui,sans-serif;font-size:.7rem;letter-spacing:.04em;padding:.15rem .5rem;border-radius:99px;margin-right:.5rem}
+.controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.7rem;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:1rem;margin-bottom:1rem;position:relative}
+.field{display:flex;flex-direction:column;gap:.3rem;font-family:system-ui,sans-serif;position:relative}
+label{font-size:.68rem;text-transform:uppercase;letter-spacing:.03em;color:var(--sub)}
+select,input{font-family:system-ui,sans-serif;font-size:.9rem;padding:.45rem .5rem;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+.suggestions{position:absolute;top:100%;left:0;right:0;background:var(--card);border:1px solid var(--line);border-radius:6px;max-height:200px;overflow-y:auto;z-index:10;display:none}
+.suggestions div{padding:.4rem .6rem;font-size:.85rem;cursor:pointer}
+.suggestions div:hover{background:var(--bg)}
+.meta{font-family:system-ui,sans-serif;font-size:.82rem;color:var(--sub);margin-bottom:1rem;min-height:1.2em}
+.meta a{color:var(--accent)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:1.1rem 1.2rem;margin-bottom:1.2rem}
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.88rem}
+th,td{text-align:left;padding:.4rem .45rem;border-bottom:1px solid var(--line)}
+th{font-family:system-ui,sans-serif;font-size:.7rem;text-transform:uppercase;color:var(--sub)}
+td.num{text-align:right;font-variant-numeric:tabular-nums}
+.bar-row{display:grid;grid-template-columns:150px 1fr auto;align-items:center;gap:.6rem;margin:.32rem 0;font-size:.84rem;font-family:system-ui,sans-serif}
+.bar-track{background:var(--line);border-radius:4px;height:13px;overflow:hidden}
+.bar-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:4px}
+.num{font-variant-numeric:tabular-nums;color:var(--sub);text-align:right}
+.empty{color:var(--sub);font-style:italic;font-family:system-ui,sans-serif}
+footer{margin-top:2rem;font-size:.8rem;color:var(--sub);border-top:1px solid var(--line);padding-top:1rem;font-family:system-ui,sans-serif}
+a{color:var(--accent)}
+button{font-family:system-ui,sans-serif;font-size:.8rem;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:.4rem .7rem;cursor:pointer;color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <span class="badge">live · dati letti in tempo reale</span>
+  <h1>Piattaforma Dati Welfare — Non autosufficienza in Italia</h1>
+  <p class="tag" id="subtitle">Caricamento indicatori disponibili…</p>
+</header>
+
+<div class="controls">
+  <div class="field"><label>Indicatore</label><select id="f-ind"></select></div>
+  <div class="field">
+    <label>Territorio (regione o comune)</label>
+    <input id="f-terr" type="text" placeholder="Tutti — scrivi per cercare">
+    <div class="suggestions" id="suggestions"></div>
+  </div>
+  <div class="field"><label>Anno</label><select id="f-anno"></select></div>
+</div>
+
+<div class="meta" id="meta"></div>
+
+<div class="card">
+  <div id="viz"></div>
+</div>
+
+<div class="card scroll">
+  <div id="tablewrap"></div>
+  <button id="more" style="display:none;margin-top:.6rem">Carica altri risultati</button>
+</div>
+
+<footer>
+Dati letti in tempo reale da un database Postgres (Neon) aggiornato con fonti ufficiali ISTAT, INPS e Ministero della Salute. Parte del progetto <a href="https://www.ilcantierewelfare.it" target="_blank">Il Cantiere del Welfare</a>.
+</footer>
+</div>
+
+<script>
+const fInd = document.getElementById('f-ind');
+const fTerr = document.getElementById('f-terr');
+const fAnno = document.getElementById('f-anno');
+const meta = document.getElementById('meta');
+const viz = document.getElementById('viz');
+const tablewrap = document.getElementById('tablewrap');
+const subtitle = document.getElementById('subtitle');
+const suggestions = document.getElementById('suggestions');
+const moreBtn = document.getElementById('more');
+
+let INDICATORI = [];
+let offset = 0;
+let currentTotal = 0;
+let lastRows = [];
+
+function titleCase(s){
+  if(!s) return s;
+  return s.replace(/`/g,"'").toLowerCase().split(' ').map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ');
+}
+function fmt(n){ return Number(n).toLocaleString('it-IT'); }
+
+async function loadMeta(){
+  const r = await fetch('/api/meta');
+  const j = await r.json();
+  INDICATORI = j.indicatori;
+  subtitle.textContent = `${j.indicatori.length} indicatori disponibili, ${j.indicatori.reduce((a,b)=>a+Number(b.n_record),0).toLocaleString('it-IT')} osservazioni totali — aggiornato in tempo reale`;
+  fInd.innerHTML = INDICATORI.map(i => `<option value="${i.codice}">${i.descrizione}</option>`).join('');
+  const cur = INDICATORI[0];
+  const annoMin = Math.min(...INDICATORI.map(i=>i.anno_min));
+  const annoMax = Math.max(...INDICATORI.map(i=>i.anno_max));
+  let opts = '<option value="">Tutti gli anni</option>';
+  for(let y = annoMax; y >= annoMin; y--) opts += `<option value="${y}">${y}</option>`;
+  fAnno.innerHTML = opts;
+  runQuery(true);
+}
+
+let searchTimer;
+fTerr.addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  const q = fTerr.value.trim();
+  if(q.length < 2){ suggestions.style.display='none'; return; }
+  searchTimer = setTimeout(async () => {
+    const r = await fetch('/api/territori?q=' + encodeURIComponent(q));
+    const rows = await r.json();
+    if(!rows.length){ suggestions.style.display='none'; return; }
+    suggestions.innerHTML = rows.map(t => `<div data-v="${t.nome}">${titleCase(t.nome)} <span style="color:var(--sub);font-size:.75rem">(${t.livello})</span></div>`).join('');
+    suggestions.style.display = 'block';
+  }, 250);
+});
+suggestions.addEventListener('click', e => {
+  const v = e.target.closest('div')?.dataset.v;
+  if(v){ fTerr.value = titleCase(v); suggestions.style.display='none'; runQuery(true); }
+});
+document.addEventListener('click', e => { if(!e.target.closest('.field')) suggestions.style.display='none'; });
+
+async function runQuery(reset){
+  if(reset) offset = 0;
+  const ind = fInd.value;
+  const terr = fTerr.value.trim();
+  const anno = fAnno.value;
+  const indInfo = INDICATORI.find(i => i.codice === ind);
+
+  meta.textContent = 'Interrogazione in corso…';
+  const params = new URLSearchParams({ indicatore: ind, limit: 500, offset });
+  if(terr) params.set('territorio', terr);
+  if(anno) params.set('anno', anno);
+
+  const r = await fetch('/api/data?' + params.toString());
+  const j = await r.json();
+  if(j.error){ meta.textContent = 'Errore: ' + j.error; return; }
+
+  currentTotal = j.totale;
+  lastRows = reset ? j.righe : lastRows.concat(j.righe);
+  offset += j.righe.length;
+  moreBtn.style.display = offset < currentTotal ? 'inline-block' : 'none';
+
+  meta.innerHTML = `<strong>${fmt(currentTotal)}</strong> record trovati (mostrati ${fmt(lastRows.length)}) · unità: <strong>${indInfo?.unita_misura || ''}</strong>`;
+
+  renderViz(lastRows, terr, anno);
+  renderTable(lastRows);
+}
+
+function renderViz(rows, terr, anno){
+  viz.innerHTML = '';
+  if(!terr && rows.length > 1 && rows.length <= 25){
+    const targetYear = anno || Math.max(...rows.map(r=>r.anno));
+    const forChart = rows.filter(r => String(r.anno) === String(targetYear)).sort((a,b)=>b.valore-a.valore);
+    if(forChart.length){
+      const cap = document.createElement('p');
+      cap.style.cssText='font-family:system-ui,sans-serif;font-size:.78rem;color:var(--sub);margin-top:0';
+      cap.textContent = `Confronto territoriale, anno ${targetYear}`;
+      viz.appendChild(cap);
+      const max = Math.max(...forChart.map(r=>Number(r.valore)));
+      forChart.forEach(r=>{
+        const pct = (Number(r.valore)/max*100).toFixed(1);
+        const row = document.createElement('div');
+        row.className='bar-row';
+        row.innerHTML = `<span>${titleCase(r.territorio)}</span><span class="bar-track"><span class="bar-fill" style="width:${pct}%"></span></span><span class="num">${fmt(r.valore)}</span>`;
+        viz.appendChild(row);
+      });
+      return;
+    }
+  }
+  if(terr && !anno){
+    const trend = rows.slice().sort((a,b)=>a.anno-b.anno);
+    const cap = document.createElement('p');
+    cap.style.cssText='font-family:system-ui,sans-serif;font-size:.78rem;color:var(--sub);margin-top:0';
+    cap.textContent = `Serie storica — ${titleCase(terr)}`;
+    viz.appendChild(cap);
+    const max = Math.max(...trend.map(r=>Number(r.valore)));
+    trend.forEach(r=>{
+      const pct = (Number(r.valore)/max*100).toFixed(1);
+      const row = document.createElement('div');
+      row.className='bar-row';
+      row.innerHTML = `<span>${r.anno}</span><span class="bar-track"><span class="bar-fill" style="width:${pct}%"></span></span><span class="num">${fmt(r.valore)}</span>`;
+      viz.appendChild(row);
+    });
+    return;
+  }
+  viz.innerHTML = '<p class="empty">Scrivi un territorio o scegli un anno singolo per vedere il confronto grafico.</p>';
+}
+
+function renderTable(rows){
+  if(!rows.length){ tablewrap.innerHTML = '<p class="empty">Nessun dato per questa combinazione di filtri.</p>'; return; }
+  const hasTipo = rows.some(r => r.tipologia);
+  let html = '<table><tr><th>Anno</th><th>Territorio</th><th>Livello</th><th>Settore</th>' + (hasTipo?'<th>Tipologia</th>':'') + '<th>Valore</th></tr>';
+  rows.forEach(r => {
+    html += `<tr><td>${r.anno}</td><td>${titleCase(r.territorio)}</td><td>${r.livello}</td><td>${titleCase(r.settore||'—')}</td>${hasTipo?`<td>${titleCase(r.tipologia||'—')}</td>`:''}<td class="num">${fmt(r.valore)}</td></tr>`;
+  });
+  html += '</table>';
+  tablewrap.innerHTML = html;
+}
+
+fInd.addEventListener('change', () => runQuery(true));
+fAnno.addEventListener('change', () => runQuery(true));
+moreBtn.addEventListener('click', () => runQuery(false));
+
+loadMeta();
+</script>
+</body>
+</html>
